@@ -3,6 +3,8 @@
 config.py
 token.txt
 *.key
+*.json
+token.*
 
 # Python
 __pycache__/

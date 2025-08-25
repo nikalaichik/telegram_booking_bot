@@ -4,14 +4,13 @@ import logging
 from datetime import datetime, timedelta
 from pytz import timezone
 from typing import List, Optional
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from google.oauth2 import service_account
+
 
 from config import (
-    GOOGLE_CREDENTIALS_FILE, GOOGLE_TOKEN_FILE, GOOGLE_SCOPES, CALENDAR_ID,
+    GOOGLE_SERVICE_ACCOUNT_FILE, GOOGLE_SCOPES, CALENDAR_ID,
     SERVICE_NAME, SERVICE_DURATION_HOURS, WORKING_DAYS, WORKING_HOURS_START,
     WORKING_HOURS_END, DAYS_AHEAD_BOOKING, SERVICE_PRICE_RUB, ADMIN_CONTACT, PHONE_NUMBER
 )
@@ -27,40 +26,20 @@ class GoogleCalendarManager:
         self.authenticate()
 
     def authenticate(self):
-        """Аутентификация с Google Calendar API"""
-        creds = None
-
+        """Аутентификация через Service Account"""
         try:
-            # Загружаем сохраненные токены
-            if os.path.exists(GOOGLE_TOKEN_FILE):
-                with open(GOOGLE_TOKEN_FILE, 'rb') as token:
-                    creds = pickle.load(token)
+            if not os.path.exists(GOOGLE_SERVICE_ACCOUNT_FILE):
+                raise FileNotFoundError(
+                    f"Файл {GOOGLE_SERVICE_ACCOUNT_FILE} не найден. "
+                    "Скачайте JSON с ключами сервисного аккаунта из Google Cloud Console."
+                )
 
-            # Проверяем и обновляем токены
-            if not creds or not creds.valid:
-                if creds and creds.expired and creds.refresh_token:
-                    creds.refresh(Request())
-                    logger.info("Токены Google обновлены")
-                else:
-                    # Запускаем процесс авторизации
-                    if not os.path.exists(GOOGLE_CREDENTIALS_FILE):
-                        raise FileNotFoundError(
-                            f"Файл {GOOGLE_CREDENTIALS_FILE} не найден. "
-                            "Скачайте credentials.json из Google Cloud Console."
-                        )
-
-                    flow = InstalledAppFlow.from_client_secrets_file(
-                        GOOGLE_CREDENTIALS_FILE, GOOGLE_SCOPES
-                    )
-                    creds = flow.run_local_server(port=0)
-                    logger.info("Новые токены Google получены")
-
-                # Сохраняем токены
-                with open(GOOGLE_TOKEN_FILE, 'wb') as token:
-                    pickle.dump(creds, token)
-
+            creds = service_account.Credentials.from_service_account_file(
+                GOOGLE_SERVICE_ACCOUNT_FILE,
+                scopes=GOOGLE_SCOPES
+            )
             self.service = build('calendar', 'v3', credentials=creds)
-            logger.info("Google Calendar API инициализован")
+            logger.info("Google Calendar API инициализован через Service Account")
 
         except Exception as e:
             logger.error(f"Ошибка аутентификации Google: {e}")
