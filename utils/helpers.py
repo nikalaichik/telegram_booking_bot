@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict
-
+from pytz import timezone
 from config import REMINDER_DAYS_BEFORE, REMINDER_HOURS_BEFORE, SERVICE_PRICE_RUB
 from database.models import Booking
 
@@ -68,8 +68,13 @@ def format_booking_list(bookings: List[Dict]) -> str:
 async def schedule_booking_reminders(context, booking: Booking, booking_id: int):
     """Планирование напоминаний о записи"""
     try:
-        appointment_datetime = datetime.strptime(f"{booking.date} {booking.time}", "%Y-%m-%d %H:%M")
-        current_time = datetime.now()
+        tz = timezone('Europe/Minsk')
+        # 2. Создаем "наивный" объект datetime
+        appointment_datetime_naive = datetime.strptime(f"{booking.date} {booking.time}", "%Y-%m-%d %H:%M")
+        # 3. Делаем его "осознающим" часовой пояс
+        appointment_datetime = tz.localize(appointment_datetime_naive)
+        #appointment_datetime = datetime.strptime(f"{booking.date} {booking.time}", "%Y-%m-%d %H:%M")
+        current_time = datetime.now(tz)
 
         # Напоминание за день
         reminder_day = appointment_datetime - timedelta(days=REMINDER_DAYS_BEFORE)

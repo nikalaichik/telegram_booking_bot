@@ -2,7 +2,7 @@ import logging
 import asyncio
 import sys
 import os
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, PicklePersistence
 from config import BOT_TOKEN
 from bot.handlers import BotHandlers
 
@@ -48,8 +48,12 @@ def main():
     logger = logging.getLogger(__name__)
 
     try:
+        # 1. Создаем объект персистентности.
+        # Он будет хранить данные в файле 'bot_persistence'
+        persistence = PicklePersistence(filepath='bot_persistence')
         # Создание приложения
-        application = Application.builder().token(BOT_TOKEN).build()
+        #application = Application.builder().token(BOT_TOKEN).build()
+        application = Application.builder().token(BOT_TOKEN).persistence(persistence).build()
 
         # Создание обработчиков
         handlers = BotHandlers()
