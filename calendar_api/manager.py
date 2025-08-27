@@ -48,15 +48,65 @@ class GoogleCalendarManager:
     def get_available_slots(self) -> List[TimeSlot]:
         """Получение доступных временных слотов с диагностикой"""
         available_slots = []
+        tz = timezone('Europe/Minsk')  # Указываем ваш часовой пояс
 
         try:
-            current_time = datetime.now()
+            current_time = datetime.now(tz)
             logger.info(f"Текущее время: {current_time}")
             logger.info(f"Рабочие дни: {WORKING_DAYS}")
             logger.info(f"Рабочие часы: {WORKING_HOURS_START}-{WORKING_HOURS_END}")
             logger.info(f"Дней вперед: {DAYS_AHEAD_BOOKING}")
 
-            slots_generated = 0
+            # --- Оптимизация: Получаем все занятые события за один запрос ---
+            start_period = current_time
+            end_period = current_time + timedelta(days=DAYS_AHEAD_BOOKING + 1)
+
+            events_result = self.service.events().list(
+                calendarId=CALENDAR_ID,
+                timeMin=start_period.isoformat(),
+                timeMax=end_period.isoformat(),
+                singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+            busy_events = events_result.get('items', [])
+
+            # Создаем множество с началом занятых слотов для быстрой проверки
+            busy_slots_start_times = set()
+            for event in busy_events:
+                # Google API всегда возвращает время с часовым поясом
+                start_str = event['start'].get('dateTime', event['start'].get('date'))
+                start_dt = datetime.fromisoformat(start_str)
+                busy_slots_start_times.add(start_dt)
+
+            for day in range(1, DAYS_AHEAD_BOOKING + 1):
+                date_to_check = current_time.date() + timedelta(days=day)
+
+                if date_to_check.weekday() not in WORKING_DAYS:
+                    continue
+
+                for hour in range(WORKING_HOURS_START, WORKING_HOURS_END):
+                    # Сразу создаем "осознающий" объект datetime
+                    slot_datetime = tz.localize(datetime(
+                        date_to_check.year, date_to_check.month, date_to_check.day, hour
+                    ))
+
+                    if slot_datetime <= current_time:
+                        continue
+
+                    # Проверяем, не занят ли слот, локально (быстро)
+                    if slot_datetime not in busy_slots_start_times:
+                        slot = TimeSlot(
+                            date=slot_datetime.strftime('%Y-%m-%d'),
+                            time=slot_datetime.strftime('%H:%M'),
+                            datetime=slot_datetime,
+                            is_available=True
+                        )
+                        available_slots.append(slot)
+
+            logger.info(f"Найдено доступных слотов: {len(available_slots)}")
+            return available_slots
+
+            '''slots_generated = 0
             slots_available = 0
 
             for day in range(1, DAYS_AHEAD_BOOKING + 1):
@@ -98,7 +148,7 @@ class GoogleCalendarManager:
 
             logger.info(f"Сгенерировано слотов: {slots_generated}")
             logger.info(f"Доступных слотов: {slots_available}")
-            logger.info(f"Возвращаем первые {min(50, len(available_slots))} слотов")
+            logger.info(f"Возвращаем первые {min(50, len(available_slots))} слотов")'''
 
             return available_slots[:50]  # Ограничиваем количество
 
@@ -112,7 +162,10 @@ class GoogleCalendarManager:
         """Проверка доступности временного слота в календаре"""
         try:
             tz = timezone('Europe/Moscow')
-            slot_datetime = slot_datetime.astimezone(tz)  # Конвертируем в нужную TZ
+            # Если пришел "наивный" datetime, делаем его "осознающим"
+            if slot_datetime.tzinfo is None:
+                slot_datetime = tz.localize(slot_datetime)
+            #slot_datetime = slot_datetime.astimezone(tz)  # Конвертируем в нужную TZ
 
             time_min = slot_datetime.isoformat()  # Убрали 'Z' - используем локальное время
             time_max = (slot_datetime + timedelta(hours=SERVICE_DURATION_HOURS)).isoformat()
